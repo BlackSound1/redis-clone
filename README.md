@@ -21,6 +21,7 @@ Overview of RESP:
 - Strings: Strings are defined with a `+` and don't need to have a number associated with them because message will continue until newline bytes.
 - Bulk strings: Bulk strings are defined with `$#\r\n`. They can have multiple words. The `#` defines the number of bytes in the string.
 - Errors: Error messages are defined with `-`.
+- Null: Can send a null message with a bulk string of length -1: `$-1\r\n`.
 - End a message: All RESP messages end with `\r\n`.
 
 ## Examples
