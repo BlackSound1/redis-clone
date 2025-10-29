@@ -2,6 +2,8 @@
 
 This project is just a simple clone of a Redis server, written in Go.
 
+Contains a `redis.conf` file to specify typical Redis settings.
+
 ## To Use
 
 1. Make sure your normal Redis server is closed with `sudo systemctl stop redis`.
@@ -62,3 +64,24 @@ Which can be understood like:
 Redis sends messages as an array of bulk strings. This array has 2 bulk strings.
 The first is a 3-byte string and the next is another 3-byte string.
 
+
+## Persistence
+
+Data in Redis can be stored persistently using AOF or RDB.
+
+### RDB (Redis Database)
+
+Takes keys and values in memory, converts them to bytes, and saves them all to DB file.
+
+Can be automatic using `save` settings in the config file, or manual using a `SAVE` command.
+
+#### Syntax of save settings
+
+In the `redis.conf` file, automatic RDB saving can be configured using `save` commands. One such setting looks like `save 900 1`.
+This means "save to the DB if 1 key changes in 900 seconds".
+
+### AOF (Append Only File)
+
+Creates a `.aof` file with RESP strings. Every once in a while, grabs all `SET` strings and appends them to the file.
+
+To restore data, it takes all RESP strings from the file, parses them, and reruns all `SET` commands.
