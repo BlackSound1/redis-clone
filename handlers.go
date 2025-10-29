@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 )
 
 // Create a handler function type
-type Handler func(*Value) *Value
+type Handler func(*Value, *AppState) *Value
 
 var Handlers = map[string]Handler{
 	"COMMAND": command,
@@ -17,7 +18,7 @@ var Handlers = map[string]Handler{
 // handle takes a net.Conn and a Value type and calls the handler
 // associated with the bulk string of the first message in the Value.
 // It then writes the reply from the handler back to the connection.
-func handle(conn net.Conn, v *Value) {
+func handle(conn net.Conn, v *Value, state *AppState) {
 	// Get the bulk string of the first message
 	cmd := v.array[0].bulk
 
@@ -29,18 +30,19 @@ func handle(conn net.Conn, v *Value) {
 	}
 
 	// Call the handler with the value
-	reply := handler(v)
+	reply := handler(v, state)
 	w := NewWriter(conn)
 	w.Write(reply)
+	w.Flush() // For network connections, always flush after writing
 }
 
 // command is a stub function that just returns a basic OK string message
-func command(v *Value) *Value {
+func command(v *Value, state *AppState) *Value {
 	return &Value{typ: STRING, str: "OK"}
 }
 
 // get handles the case of GET Redis messages
-func get(v *Value) *Value {
+func get(v *Value, state *AppState) *Value {
 	// GET can only take 1 argument
 	args := v.array[1:]
 	if len(args) != 1 {
@@ -62,7 +64,7 @@ func get(v *Value) *Value {
 }
 
 // set handles the case of SET Redis messages
-func set(v *Value) *Value {
+func set(v *Value, state *AppState) *Value {
 	// SET must take 2 arguments
 	args := v.array[1:]
 	if len(args) != 2 {
@@ -74,6 +76,15 @@ func set(v *Value) *Value {
 	val := args[1].bulk
 	DB.mu.Lock()
 	DB.store[key] = val
+
+	if state.conf.aofEnabled {
+		log.Println("Saving AOF record")
+		state.aof.w.Write(v)
+
+		if state.conf.aofFsync == Always {
+			state.aof.w.Flush()
+		}
+	}
 	DB.mu.Unlock()
 
 	return &Value{typ: STRING, str: "OK"}

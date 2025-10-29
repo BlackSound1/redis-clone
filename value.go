@@ -26,18 +26,21 @@ type Value struct {
 	array []Value
 }
 
-func (v *Value) readArray(reader io.Reader) {
+func (v *Value) readArray(reader io.Reader) error {
 	// Read into a buffer. Must read 4 bytes
 	// because arrays are define as such: `*#\r\n`
 	buffer := make([]byte, 4)
-	reader.Read(buffer)
+	_, err := reader.Read(buffer)
+	if err != nil {
+		return err
+	}
 
 	// Since arrays have a length associated with it,
 	// read that length
 	arrLen, err := strconv.Atoi(string(buffer[1]))
 	if err != nil {
 		fmt.Println(err)
-		return
+		return err
 	}
 
 	// Once we know how many bulk strings are in the message,
@@ -46,6 +49,8 @@ func (v *Value) readArray(reader io.Reader) {
 		bulk := v.readBulk(reader)
 		v.array = append(v.array, bulk)
 	}
+
+	return nil
 }
 
 func (v *Value) readBulk(reader io.Reader) Value {
