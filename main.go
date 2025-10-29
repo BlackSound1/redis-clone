@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"sync"
 )
 
 // Define the symbols that define a RESP message
@@ -75,6 +76,10 @@ func (v *Value) readBulk(reader io.Reader) Value {
 }
 
 func main() {
+	// Read config file
+	log.Println("Reading config file")
+	readConf("./redis.conf")
+
 	// Create a TCP listener on port 6379, the default Redis port
 	l, err := net.Listen("tcp", ":6379")
 	if err != nil {
@@ -111,7 +116,22 @@ var Handlers = map[string]Handler{
 	"SET":     set,
 }
 
-var DB = map[string]string{}
+// A Database type containing a key, value store and
+// a mutex lock to allow concurrency
+type Database struct {
+	store map[string]string
+	mu    sync.RWMutex
+}
+
+// NewDatabase creates a new Database type
+func NewDatabase() *Database {
+	return &Database{
+		store: map[string]string{},
+		mu:    sync.RWMutex{},
+	}
+}
+
+var DB = NewDatabase()
 
 func handle(conn net.Conn, v *Value) {
 	// Get the bulk string of the first message
