@@ -84,7 +84,7 @@ func main() {
 	log.Println("Listening on port 6379")
 
 	// Block until connection is made
-	conn, err := l.Accept()
+	conn, err := l.Accept() // TODO: Add ability to accept multiple connections
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -142,9 +142,12 @@ func get(v *Value) *Value {
 		return &Value{typ: ERROR, err: "ERR invalid number of arguments for the 'GET' command"}
 	}
 
-	// Get the bulk string from the DB
+	// Get the bulk string from the DB, making sure to lock and unlock the
+	// critical section
 	name := args[0].bulk
-	val, ok := DB[name]
+	DB.mu.RLock() // Only locked for reading
+	val, ok := DB.store[name]
+	DB.mu.RUnlock()
 	if !ok {
 		return &Value{typ: NULL}
 	}
@@ -164,7 +167,9 @@ func set(v *Value) *Value {
 	// Get the key and value and set the local "DB" with those in mind
 	key := args[0].bulk
 	val := args[1].bulk
-	DB[key] = val
+	DB.mu.Lock()
+	DB.store[key] = val
+	DB.mu.Unlock()
 
 	return &Value{typ: STRING, str: "OK"}
 }
