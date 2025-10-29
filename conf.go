@@ -39,9 +39,13 @@ const (
 	No       FSyncMode = "no"       // Let OS handle syncing
 )
 
+// readConf reads a configuration file and returns a Config type
+// with the settings specified in the file. If the file cannot be
+// read, it returns a Config type with default values
 func readConf(filename string) *Config {
 	conf := NewConfig()
 
+	// Try to open the config file
 	f, err := os.Open(filename)
 	if err != nil {
 		fmt.Printf("Cannot read %s - using default config instead\n", filename)
@@ -51,6 +55,7 @@ func readConf(filename string) *Config {
 
 	s := bufio.NewScanner(f)
 
+	// For each line in the file, parse it
 	for s.Scan() {
 		l := s.Text()
 		parseLine(l, conf)
@@ -61,6 +66,7 @@ func readConf(filename string) *Config {
 		return conf
 	}
 
+	// Ensure directory(ies) specified in the config file exist
 	if conf.dir != "" {
 		os.MkdirAll(conf.dir, 0755)
 	}
