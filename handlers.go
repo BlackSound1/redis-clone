@@ -71,12 +71,13 @@ func set(v *Value, state *AppState) *Value {
 		return &Value{typ: ERROR, err: "ERR invalid number of arguments for the 'SET' command"}
 	}
 
-	// Get the key and value and set the local "DB" with those in mind
+	// Get the key and value and set the DB with those in mind
 	key := args[0].bulk
 	val := args[1].bulk
 	DB.mu.Lock()
 	DB.store[key] = val
 
+	// If AOF is enabled, write to its buffer
 	if state.conf.aofEnabled {
 		log.Println("Saving AOF record")
 		state.aof.w.Write(v)
@@ -85,6 +86,12 @@ func set(v *Value, state *AppState) *Value {
 			state.aof.w.Flush()
 		}
 	}
+
+	// If there are RDB snapshots, increment the keys
+	if len(state.conf.rdb) >= 0 {
+		IncrementRDBTrackers()
+	}
+
 	DB.mu.Unlock()
 
 	return &Value{typ: STRING, str: "OK"}

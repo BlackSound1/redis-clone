@@ -20,6 +20,12 @@ func main() {
 		state.aof.Sync()
 	}
 
+	// If there are any RDB snapshots, save to memory any RDB values saved to the file
+	if len(conf.rdb) > 0 {
+		SyncRDB(conf)
+		InitRDBTrackers(conf)
+	}
+
 	// Create a TCP listener on port 6379, the default Redis port
 	l, err := net.Listen("tcp", ":6379")
 	if err != nil {
