@@ -27,6 +27,9 @@ Overview of RESP:
 - Delete: Use `DEL key1 [key2...]` to delete 1 or more keys. Returns number of keys actually deleted (not just attempted).
   If a given key doesn't exit, no-op, so it's safe to try deleting keys that don't exist.
 - Check for existence: To check if a key exists in the DB use `EXISTS key1 [key2...]`. Can also take multiple space-separated keys.
+- Check for existence using pattern matching: Use `KEYS pattern` to search all keys, given a pattern.
+  Can search for a key exactly by using the key name, with any number of wildcard characters with `*`, or with exactly 1 wildcard character with `?`.
+  Other possibilities exist.
 - End a message: All RESP messages end with `\r\n`.
 
 ## Examples
