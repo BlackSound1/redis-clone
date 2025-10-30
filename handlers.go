@@ -14,6 +14,7 @@ var Handlers = map[string]Handler{
 	"GET":     get,
 	"SET":     set,
 	"DEL":     del,
+	"EXISTS":  exists,
 }
 
 // handle takes a net.Conn and a Value type and calls the handler
@@ -117,4 +118,26 @@ func del(v *Value, state *AppState) *Value {
 	DB.mu.Unlock()
 
 	return &Value{typ: INTEGER, num: numDeleted}
+}
+
+// exists handles the case of EXISTS Redis messages
+func exists(v *Value, state *AppState) *Value {
+	args := v.array[1:]
+
+	var numExists int
+
+	// Only lock for reading
+	DB.mu.RLock()
+	// Go through all the space-separated keys, and if they
+	// exist in the DB, increment counter
+	for _, arg := range args {
+		_, ok := DB.store[arg.bulk]
+		if ok {
+			numExists++
+		}
+	}
+
+	DB.mu.RUnlock()
+
+	return &Value{typ: INTEGER, num: numExists}
 }
