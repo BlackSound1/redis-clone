@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"path/filepath"
 )
 
 // Create a handler function type
@@ -15,6 +16,7 @@ var Handlers = map[string]Handler{
 	"SET":     set,
 	"DEL":     del,
 	"EXISTS":  exists,
+	"KEYS":    keys,
 }
 
 // handle takes a net.Conn and a Value type and calls the handler
@@ -140,4 +142,46 @@ func exists(v *Value, state *AppState) *Value {
 	DB.mu.RUnlock()
 
 	return &Value{typ: INTEGER, num: numExists}
+}
+
+// keys handles the case of KEYS Redis messages
+//
+// In prod, may be better to use SCAN
+func keys(v *Value, state *AppState) *Value {
+	args := v.array[1:]
+
+	// KEYS can only take 1 argument
+	if len(args) > 1 {
+		return &Value{typ: ERROR, err: "ERR Invalid number of arguments for 'KEYS' command"}
+	}
+
+	pattern := args[0].bulk
+
+	DB.mu.RLock()
+
+	var matches []string
+	// Loop over all keys
+	for key := range DB.store {
+		matched, err := filepath.Match(pattern, key) // Can use this to offload some of the pattern-matching difficulty
+		if err != nil {
+			log.Printf("Error matching keys: (pattern: %s), (key: %s) - %v", pattern, key, err)
+			continue
+		}
+
+		// If we matched, add to the matches
+		if matched {
+			matches = append(matches, key)
+		}
+	}
+
+	DB.mu.RUnlock()
+
+	reply := Value{typ: ARRAY}
+
+	// For each match, add to the reply's array a new bulk string
+	for _, m := range matches {
+		reply.array = append(reply.array, Value{typ: BULK, bulk: m})
+	}
+
+	return &reply
 }
