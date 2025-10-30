@@ -10,11 +10,12 @@ import (
 type ValueType string
 
 const (
-	ARRAY  ValueType = "*"
-	BULK   ValueType = "$"
-	STRING ValueType = "+"
-	ERROR  ValueType = "-"
-	NULL   ValueType = ""
+	ARRAY   ValueType = "*"
+	BULK    ValueType = "$"
+	STRING  ValueType = "+"
+	ERROR   ValueType = "-"
+	NULL    ValueType = ""
+	INTEGER ValueType = ":"
 )
 
 // Define a RESP message type
@@ -23,6 +24,7 @@ type Value struct {
 	bulk  string
 	str   string
 	err   string
+	num   int
 	array []Value
 }
 

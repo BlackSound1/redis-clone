@@ -24,6 +24,8 @@ Overview of RESP:
 - Bulk strings: Bulk strings are defined with `$#\r\n`. They can have multiple words. The `#` defines the number of bytes in the string.
 - Errors: Error messages are defined with `-`.
 - Null: Can send a null message with a bulk string of length -1: `$-1\r\n`.
+- Delete: Use `DEL` followed by a list of space-separated keys to delete. Returns number of keys actually deleted (not just attempted).
+  If a given key doesn't exit, no-op, so it's safe to try deleting keys that don't exist.
 - End a message: All RESP messages end with `\r\n`.
 
 ## Examples
