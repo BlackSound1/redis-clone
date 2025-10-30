@@ -26,6 +26,9 @@ type Value struct {
 	array []Value
 }
 
+// readArray reads an array RESP message from the given io.Reader into the Value type.
+// It first reads the length of the array, then reads that many bulk strings from the reader.
+// The bulk strings are added to the Value's array field
 func (v *Value) readArray(reader io.Reader) error {
 	// Read into a buffer. Must read 4 bytes
 	// because arrays are define as such: `*#\r\n`
@@ -53,6 +56,9 @@ func (v *Value) readArray(reader io.Reader) error {
 	return nil
 }
 
+// readBulk reads a bulk RESP message from the given io.Reader into the Value type.
+// It first reads the size of the bulk string, then reads that many bytes from the reader.
+// The bulk string is returned as a Value with the BULK type
 func (v *Value) readBulk(reader io.Reader) Value {
 	// Read the bulk buffer. Also must have 4 bytes
 	buffer := make([]byte, 4)
