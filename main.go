@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -34,23 +35,43 @@ func main() {
 	defer l.Close()
 	log.Println("Listening on port 6379")
 
-	// Block until connection is made
-	conn, err := l.Accept() // TODO: Add ability to accept multiple connections
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	defer conn.Close()
-	log.Println("Connection accepted!")
+	var wg sync.WaitGroup
 
 	for {
+		// Block until connection is made
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		// Wait for 1 goroutine to finish
+		wg.Add(1)
+		go func() {
+			handleConn(conn, state)
+			wg.Done() // Decrement wg counter by 1
+		}()
+	}
+	wg.Wait() // Block until wg counter is 0
+}
+
+// handleConn calls the handler associated with the bulk string of the first message in the Value.
+// It then writes the reply from the handler back to the connection.
+// It will continuously read RESP messages from the connection until it is closed
+func handleConn(conn net.Conn, state *AppState) {
+	log.Println("Accepted new connection: ", conn.LocalAddr().String())
+	for {
 		v := Value{typ: ARRAY}
-		v.readArray(conn)
+		if err := v.readArray(conn); err != nil {
+			log.Println(err)
+			break
+		}
 
 		handle(conn, &v, state)
 
 		fmt.Println(v.array)
 	}
+	log.Println("Connection closed: ", conn.LocalAddr().String())
 }
 
 type AppState struct {
