@@ -13,6 +13,7 @@ var Handlers = map[string]Handler{
 	"COMMAND": command,
 	"GET":     get,
 	"SET":     set,
+	"DEL":     del,
 }
 
 // handle takes a net.Conn and a Value type and calls the handler
@@ -95,4 +96,25 @@ func set(v *Value, state *AppState) *Value {
 	DB.mu.Unlock()
 
 	return &Value{typ: STRING, str: "OK"}
+}
+
+// del handles the case of DEL Redis messages
+func del(v *Value, state *AppState) *Value {
+	args := v.array[1:]
+
+	var numDeleted int
+
+	// Lock for reading/ writing because deleting is somewhat like a write
+	DB.mu.Lock()
+	// Go through all keys to delete (may be multiple)
+	for _, arg := range args {
+		_, ok := DB.store[arg.bulk]
+		delete(DB.store, arg.bulk)
+		if ok {
+			numDeleted++
+		}
+	}
+	DB.mu.Unlock()
+
+	return &Value{typ: INTEGER, num: numDeleted}
 }
