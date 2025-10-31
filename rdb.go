@@ -30,9 +30,9 @@ var trackers = []*SnapshotTracker{}
 // given Config. It then starts a goroutine for each tracker to keep track of the
 // number of keys changed and save to DB every snapshot.Secs seconds if the number of
 // keys changed is at least snapshot.KeysChanged
-func InitRDBTrackers(conf *Config) {
+func InitRDBTrackers(state *AppState) {
 	// Go through each RDB snapshot and track it
-	for _, rdb := range conf.rdb {
+	for _, rdb := range state.conf.rdb {
 		tracker := NewSnapshotTracker(&rdb)
 		trackers = append(trackers, tracker)
 
@@ -44,7 +44,7 @@ func InitRDBTrackers(conf *Config) {
 			// If the number of keys changed is at least the threshold, save to DB
 			for range tracker.ticker.C {
 				if tracker.keys >= tracker.RDB.KeysChanged {
-					SaveRDB(conf)
+					SaveRDB(state)
 				}
 
 				tracker.keys = 0
@@ -64,8 +64,8 @@ func IncrementRDBTrackers() {
 }
 
 // SaveRDB saves the current state of the database to a file on disk, in bytes
-func SaveRDB(conf *Config) {
-	filepath := path.Join(conf.dir, conf.rdbFn)
+func SaveRDB(state *AppState) {
+	filepath := path.Join(state.conf.dir, state.conf.rdbFn)
 
 	// Create file if not exists, open for writing only, and make sure previous content is overwritten
 	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
@@ -75,10 +75,16 @@ func SaveRDB(conf *Config) {
 	}
 	defer f.Close()
 
-	// Read the contents of the DB store to the encoder, which encodes it to bytes
-	DB.mu.RLock()
-	err = gob.NewEncoder(f).Encode(&DB.store)
-	DB.mu.Unlock()
+	// If BGSAVE command, save to a local `dbCopy` in the AppState.
+	// Else, save normally to the actual DB
+	if state.bgSaveRunning {
+		err = gob.NewEncoder(f).Encode(&state.dbCopy)
+	} else {
+		DB.mu.RLock()
+		err = gob.NewEncoder(f).Encode(&DB.store)
+		DB.mu.RUnlock()
+	}
+
 	if err != nil {
 		log.Println("Error saving to RDB file: ", err)
 		return
