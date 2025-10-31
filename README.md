@@ -31,6 +31,8 @@ Overview of RESP:
   Can search for a key exactly by using the key name, with any number of wildcard characters with `*`, or with exactly 1 wildcard character with `?`. Other possibilities exist.
 - **Save DB immediately**. Sometimes you may want to save the DB immediately to a file regardless of your AOF or RDB policies. To do so, use `SAVE`, which takes no arguments.
   Typically, this isn't preferred in production, as it is blocking. `BGSAVE` is usually preferred instead. (See [Notes](#notes)).
+- **Get how many keys are the in DB**: Use `DBSIZE` with no arguments to get how many keys are stored in the DB.
+- **Delete the whole DB**: To purge the whole DB, use `FLUSHDB` with no arguments.
 - **End a message**: All RESP messages end with `\r\n`.
 
 ## Examples
