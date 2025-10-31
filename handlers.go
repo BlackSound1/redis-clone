@@ -20,6 +20,8 @@ var Handlers = map[string]Handler{
 	"KEYS":    keys,
 	"SAVE":    save,
 	"BGSAVE":  bgsave,
+	"FLUSHDB": flushdb,
+	"DBSIZE":  dbsize,
 }
 
 // handle takes a net.Conn and a Value type and calls the handler
@@ -215,7 +217,7 @@ func bgsave(v *Value, state *AppState) *Value {
 
 	// Save to DB in another thread. Whenever the goroutine finishes, reset the BGSAVE state variables
 	go func() {
-		defer func ()  {
+		defer func() {
 			state.bgSaveRunning = false
 			state.dbCopy = nil
 		}()
@@ -224,4 +226,23 @@ func bgsave(v *Value, state *AppState) *Value {
 	}()
 
 	return &Value{typ: STRING, str: "OK"}
+}
+
+// flushdb handles the case of FLUSHDB Redis messages
+func flushdb(v *Value, state *AppState) *Value {
+	// Instead of linearly going through each key and deleting it,
+	// just set the DB to a new, empty map
+	DB.mu.Lock()
+	DB.store = map[string]string{}
+	DB.mu.Unlock()
+	return &Value{typ: STRING, str: "OK"}
+}
+
+// dbsize handles the case of DBSIZE Redis messages
+func dbsize(v *Value, state *AppState) *Value {
+	DB.mu.RLock()
+	size := len(DB.store)
+	DB.mu.RUnlock()
+
+	return &Value{typ: INTEGER, num: size}
 }
