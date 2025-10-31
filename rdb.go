@@ -66,7 +66,9 @@ func IncrementRDBTrackers() {
 // SaveRDB saves the current state of the database to a file on disk, in bytes
 func SaveRDB(conf *Config) {
 	filepath := path.Join(conf.dir, conf.rdbFn)
-	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_WRONLY, 0644)
+
+	// Create file if not exists, open for writing only, and make sure previous content is overwritten
+	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Println("Error opening RDB file: ", err)
 		return
@@ -74,7 +76,9 @@ func SaveRDB(conf *Config) {
 	defer f.Close()
 
 	// Read the contents of the DB store to the encoder, which encodes it to bytes
+	DB.mu.RLock()
 	err = gob.NewEncoder(f).Encode(&DB.store)
+	DB.mu.Unlock()
 	if err != nil {
 		log.Println("Error saving to RDB file: ", err)
 		return
@@ -85,9 +89,10 @@ func SaveRDB(conf *Config) {
 // current state of the database
 func SyncRDB(conf *Config) {
 	filepath := path.Join(conf.dir, conf.rdbFn)
-	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_RDONLY, 0644)
+	f, err := os.Open(filepath)
 	if err != nil {
 		log.Println("Error opening RDB file: ", err)
+		f.Close()
 		return
 	}
 	defer f.Close()
