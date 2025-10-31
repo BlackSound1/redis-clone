@@ -19,18 +19,19 @@ Every message sent in RESP will be an array filled with commands.
 
 Overview of RESP:
 
-- Arrays: Arrays are defined using `*#`, where `#` is the number of elements in the array.
-- Strings: Strings are defined with a `+` and don't need to have a number associated with them because message will continue until newline bytes.
-- Bulk strings: Bulk strings are defined with `$#\r\n`. They can have multiple words. The `#` defines the number of bytes in the string.
-- Errors: Error messages are defined with `-`.
-- Null: Can send a null message with a bulk string of length -1: `$-1\r\n`.
-- Delete: Use `DEL key1 [key2...]` to delete 1 or more keys. Returns number of keys actually deleted (not just attempted).
+- **Arrays**: Arrays are defined using `*#`, where `#` is the number of elements in the array.
+- **Strings**: Strings are defined with a `+` and don't need to have a number associated with them because message will continue until newline bytes.
+- **Bulk strings**: Bulk strings are defined with `$#\r\n`. They can have multiple words. The `#` defines the number of bytes in the string.
+- **Errors**: Error messages are defined with `-`.
+- **Null**: Can send a null message with a bulk string of length -1: `$-1\r\n`.
+- **Delete**: Use `DEL key1 [key2...]` to delete 1 or more keys. Returns number of keys actually deleted (not just attempted).
   If a given key doesn't exit, no-op, so it's safe to try deleting keys that don't exist.
-- Check for existence: To check if a key exists in the DB use `EXISTS key1 [key2...]`. Can also take multiple space-separated keys.
-- Check for existence using pattern matching: Use `KEYS pattern` to search all keys, given a pattern.
-  Can search for a key exactly by using the key name, with any number of wildcard characters with `*`, or with exactly 1 wildcard character with `?`.
-  Other possibilities exist.
-- End a message: All RESP messages end with `\r\n`.
+- **Check for existence**: To check if a key exists in the DB use `EXISTS key1 [key2...]`. Can also take multiple space-separated keys.
+  - **Check for existence using pattern matching**: Use `KEYS pattern` to search all keys, given a pattern.
+  Can search for a key exactly by using the key name, with any number of wildcard characters with `*`, or with exactly 1 wildcard character with `?`. Other possibilities exist.
+- **Save DB immediately**. Sometimes you may want to save the DB immediately to a file regardless of your AOF or RDB policies. To do so, use `SAVE`, which takes no arguments.
+  Typically, this isn't preferred in production, as it is blocking. `BGSAVE` is usually preferred instead. (See [Notes](#notes)).
+- **End a message**: All RESP messages end with `\r\n`.
 
 ## Examples
 
@@ -91,3 +92,9 @@ This means "save to the DB if 1 key changes in 900 seconds".
 Creates a `.aof` file with RESP strings. Every once in a while, grabs all `SET` strings and appends them to the file.
 
 To restore data, it takes all RESP strings from the file, parses them, and reruns all `SET` commands.
+
+## Notes
+
+`BGSAVE` uses `COW (Copy-On-Write)` in the actual Redis implementation. This uses an OS-provided memory optimization algorithm.
+This isn't quite possible in Go, because Go is garbage collected.
+So true background saving is not supported.

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"maps"
 	"net"
 	"path/filepath"
 )
@@ -17,6 +18,8 @@ var Handlers = map[string]Handler{
 	"DEL":     del,
 	"EXISTS":  exists,
 	"KEYS":    keys,
+	"SAVE":    save,
+	"BGSAVE":  bgsave,
 }
 
 // handle takes a net.Conn and a Value type and calls the handler
@@ -184,4 +187,41 @@ func keys(v *Value, state *AppState) *Value {
 	}
 
 	return &reply
+}
+
+// save handles the case of SAVE Redis messages
+//
+// save is considered to be blocking because it uses
+// the `SaveRDB` function, which has a `RLock` on its critical section
+func save(v *Value, state *AppState) *Value {
+	SaveRDB(state)
+	return &Value{typ: STRING, str: "OK"}
+}
+
+// bgsave handles the case of BGSAVE Redis messages
+func bgsave(v *Value, state *AppState) *Value {
+	if state.bgSaveRunning {
+		return &Value{typ: ERROR, err: "ERR Background saving already happening"}
+	}
+
+	// Make a local copy of the DB
+	copy := make(map[string]string, len(DB.store))
+	DB.mu.RLock()
+	maps.Copy(copy, DB.store)
+	DB.mu.RUnlock()
+
+	state.bgSaveRunning = true
+	state.dbCopy = copy
+
+	// Save to DB in another thread. Whenever the goroutine finishes, reset the BGSAVE state variables
+	go func() {
+		defer func ()  {
+			state.bgSaveRunning = false
+			state.dbCopy = nil
+		}()
+
+		SaveRDB(state)
+	}()
+
+	return &Value{typ: STRING, str: "OK"}
 }

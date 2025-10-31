@@ -24,7 +24,7 @@ func main() {
 	// If there are any RDB snapshots, save to memory any RDB values saved to the file
 	if len(conf.rdb) > 0 {
 		SyncRDB(conf)
-		InitRDBTrackers(conf)
+		InitRDBTrackers(state)
 	}
 
 	// Create a TCP listener on port 6379, the default Redis port
@@ -75,8 +75,10 @@ func handleConn(conn net.Conn, state *AppState) {
 }
 
 type AppState struct {
-	conf *Config
-	aof  *AOF
+	conf          *Config
+	aof           *AOF
+	bgSaveRunning bool
+	dbCopy        map[string]string
 }
 
 // NewAppState creates a new AppState type with the given Config settings
