@@ -4,6 +4,8 @@ import (
 	"log"
 	"maps"
 	"path/filepath"
+	"strconv"
+	"time"
 )
 
 // Create a handler function type
@@ -21,6 +23,8 @@ var Handlers = map[string]Handler{
 	"FLUSHDB": flushdb,
 	"DBSIZE":  dbsize,
 	"AUTH":    auth,
+	"EXPIRE":  expire,
+	"TTL":     ttl,
 }
 
 // These commands don't need auth
@@ -82,8 +86,16 @@ func get(client *Client, v *Value, state *AppState) *Value {
 		return &Value{typ: NULL}
 	}
 
+	// If there is an expiry that has passed, delete the key and return NULL
+	if val.Exp.Unix() != UNIX_TIMESTAMP && time.Until(val.Exp).Seconds() <= 0 {
+		DB.mu.Lock()
+		DB.Delete(name)
+		DB.mu.Unlock()
+		return &Value{typ: NULL}
+	}
+
 	// Create and return a new bulk string object based on the value
-	return &Value{typ: BULK, bulk: val}
+	return &Value{typ: BULK, bulk: val.V}
 }
 
 // set handles the case of SET Redis messages
@@ -98,7 +110,7 @@ func set(client *Client, v *Value, state *AppState) *Value {
 	key := args[0].bulk
 	val := args[1].bulk
 	DB.mu.Lock()
-	DB.store[key] = val
+	DB.Set(key, val)
 
 	// If AOF is enabled, write to its buffer
 	if state.conf.aofEnabled {
@@ -221,7 +233,7 @@ func bgsave(client *Client, v *Value, state *AppState) *Value {
 	}
 
 	// Make a local copy of the DB
-	copy := make(map[string]string, len(DB.store))
+	copy := make(map[string]*Key, len(DB.store))
 	DB.mu.RLock()
 	maps.Copy(copy, DB.store)
 	DB.mu.RUnlock()
@@ -247,7 +259,7 @@ func flushdb(client *Client, v *Value, state *AppState) *Value {
 	// Instead of linearly going through each key and deleting it,
 	// just set the DB to a new, empty map
 	DB.mu.Lock()
-	DB.store = map[string]string{}
+	DB.store = map[string]*Key{}
 	DB.mu.Unlock()
 	return &Value{typ: STRING, str: "OK"}
 }
@@ -276,4 +288,72 @@ func auth(client *Client, v *Value, state *AppState) *Value {
 		client.authenticated = false
 		return &Value{typ: ERROR, err: "ERR Invalid password"}
 	}
+}
+
+// expire handles the case of EXPIRE Redis messages
+func expire(client *Client, v *Value, state *AppState) *Value {
+	args := v.array[1:]
+	if len(args) != 2 {
+		return &Value{typ: ERROR, err: "ERR Invalid number of arguments for 'EXPIRE' command"}
+	}
+
+	keyToExpire := args[0].bulk
+	expiry := args[1].bulk
+
+	// Convert num of seconds to an int
+	expirySeconds, err := strconv.Atoi(expiry)
+	if err != nil {
+		return &Value{typ: ERROR, err: "ERR Invalid expiry value"}
+	}
+
+	// Try to get the given key from the DB if it exists. If not, return 0.
+	// If it does exist, set its expiry to `expirySeconds` seconds from now
+	DB.mu.RLock()
+	key, ok := DB.store[keyToExpire]
+	if !ok {
+		return &Value{typ: INTEGER, num: 0}
+	}
+	key.Exp = time.Now().Add(time.Second * time.Duration(expirySeconds))
+	DB.mu.RUnlock()
+
+	return &Value{typ: INTEGER, num: 1}
+}
+
+// ttl handles the case of TTL Redis messages
+func ttl(client *Client, v *Value, state *AppState) *Value {
+	args := v.array[1:]
+	if len(args) != 1 {
+		return &Value{typ: ERROR, err: "ERR Invalid number of arguments for 'TTL' command"}
+	}
+
+	keyToTTL := args[0].bulk
+
+	DB.mu.RLock()
+	key, ok := DB.store[keyToTTL]
+	DB.mu.RUnlock()
+
+	// If no key, return -2
+	if !ok {
+		return &Value{typ: INTEGER, num: -2}
+	}
+
+	exp := key.Exp
+
+	// If the expiry is set to its default value (beginning of Unix time),
+	// then assume no expiry is set and return -1
+	if exp.Unix() == UNIX_TIMESTAMP {
+		return &Value{typ: INTEGER, num: -1}
+	}
+
+	secondsLeft := int(time.Until(exp).Seconds())
+
+	// If key is expired, delete it and return -2 because it doesn't exist anymore
+	if secondsLeft <= 0 {
+		DB.mu.Lock()
+		DB.Delete(keyToTTL)
+		DB.mu.Unlock()
+		return &Value{typ: INTEGER, num: -2}
+	}
+
+	return &Value{typ: INTEGER, num: secondsLeft}
 }

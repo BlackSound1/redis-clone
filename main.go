@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// The number of seconds since Jan 1 1970
+var UNIX_TIMESTAMP int64 = time.Time{}.Unix()
+
 func main() {
 	// Read config file
 	log.Println("Reading config file")
@@ -90,7 +93,7 @@ type AppState struct {
 	conf          *Config
 	aof           *AOF
 	bgSaveRunning bool
-	dbCopy        map[string]string
+	dbCopy        map[string]*Key
 }
 
 // NewAppState creates a new AppState type with the given Config settings
