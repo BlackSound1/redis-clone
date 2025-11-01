@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/gob"
+	"encoding/hex"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -67,28 +71,69 @@ func IncrementRDBTrackers() {
 func SaveRDB(state *AppState) {
 	filepath := path.Join(state.conf.dir, state.conf.rdbFn)
 
-	// Create file if not exists, open for writing only, and make sure previous content is overwritten
-	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	// Create file if not exists, open for reading or writing, and make sure previous content is overwritten
+	f, err := os.OpenFile(filepath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
 	if err != nil {
 		log.Println("Error opening RDB file: ", err)
 		return
 	}
 	defer f.Close()
 
-	// If BGSAVE command, save to a local `dbCopy` in the AppState.
-	// Else, save normally to the actual DB
+	// Save to a local buffer. If BGSAVE, save a local copy of the DB.
+	// If not, save the actual DB
+	var buffer bytes.Buffer
 	if state.bgSaveRunning {
-		err = gob.NewEncoder(f).Encode(&state.dbCopy)
+		err = gob.NewEncoder(&buffer).Encode(&state.dbCopy)
 	} else {
 		DB.mu.RLock()
-		err = gob.NewEncoder(f).Encode(&DB.store)
+		err = gob.NewEncoder(&buffer).Encode(&DB.store)
 		DB.mu.RUnlock()
 	}
 
 	if err != nil {
-		log.Println("Error saving to RDB file: ", err)
+		log.Println("Error encoding DB to buffer: ", err)
 		return
 	}
+
+	// Read the data of the buffer once, so when it's read again
+	// in the Hash function, we're not reading a buffer that's already been read
+	data := buffer.Bytes()
+
+	// Hash the buffer and get the SHA256 checksum. This will be compared to the file checksum later
+	bufferSum, err := Hash(&buffer)
+	if err != nil {
+		log.Println("RDB - Can't compute buffer checksum: ", err)
+		return
+	}
+
+	// Actually save to file
+	_, err = f.Write(data)
+	if err != nil {
+		log.Println("RDB - Can't write to file: ", err)
+		return
+	}
+	if err := f.Sync(); /*Force flushing to disk*/ err != nil {
+		log.Println("RDB - Can't flush file to disk: ", err)
+		return
+	}
+
+	// Compute the checksum of the file we just saved to for comparison
+	if _, err := f.Seek(0, io.SeekStart); /* Force hash cursor to front of file*/ err != nil {
+		log.Println("RDB - Can't seek file: ", err)
+		return
+	}
+	fileSum, err := Hash(f)
+	if err != nil {
+		log.Println("RDB - Can't compute file checksum: ", err)
+		return
+	}
+
+	if bufferSum != fileSum {
+		log.Printf("RDB - Buffer and file checksums don't match:\nf=%s\nb=%s\n", fileSum, bufferSum)
+		return
+	}
+
+	log.Println("Saved RDB file successfully")
 }
 
 // SyncRDB reads the contents of the RDB file and decodes it into the
@@ -107,4 +152,14 @@ func SyncRDB(conf *Config) {
 	if err != nil {
 		log.Println("Error decoding RDB file: ", err)
 	}
+}
+
+// Hash takes an io.Reader and returns a SHA-256 hash of its contents.
+// The hash is returned as a hexadecimal encoded string
+func Hash(r io.Reader) (string, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
