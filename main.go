@@ -60,6 +60,7 @@ func main() {
 // It will continuously read RESP messages from the connection until it is closed
 func handleConn(conn net.Conn, state *AppState) {
 	log.Println("Accepted new connection: ", conn.LocalAddr().String())
+	client := NewClient(conn)
 	for {
 		v := Value{typ: ARRAY}
 		if err := v.readArray(conn); err != nil {
@@ -67,11 +68,22 @@ func handleConn(conn net.Conn, state *AppState) {
 			break
 		}
 
-		handle(conn, &v, state)
+		handle(client, &v, state)
 
 		fmt.Println(v.array)
 	}
 	log.Println("Connection closed: ", conn.LocalAddr().String())
+}
+
+type Client struct {
+	conn          net.Conn
+	authenticated bool
+}
+
+// NewClient creates a new Client type with a given net.Conn and authenticated set to false.
+// Keeps track of the state of each client connection
+func NewClient(conn net.Conn) *Client {
+	return &Client{conn: conn}
 }
 
 type AppState struct {

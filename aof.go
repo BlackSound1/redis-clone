@@ -46,6 +46,7 @@ func (aof *AOF) Sync() {
 
 		// Want a blank app state without AOF enabled
 		blankState := NewAppState(&Config{})
-		set(&v, blankState)
+		blankClient := Client{}
+		set(&blankClient, &v, blankState)
 	}
 }

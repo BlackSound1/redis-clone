@@ -33,6 +33,7 @@ Overview of RESP:
   Typically, this isn't preferred in production, as it is blocking. `BGSAVE` is usually preferred instead. (See [Notes](#notes)).
 - **Get how many keys are the in DB**: Use `DBSIZE` with no arguments to get how many keys are stored in the DB.
 - **Delete the whole DB**: To purge the whole DB, use `FLUSHDB` with no arguments.
+- **Authenticate**: All commands except `COMMAND` and `AUTH` require authentication to use. Use `AUTH <PASS>` to log in. By default, the password is `hey`, but this can be changed in the `redis.conf` file. (See [Notes](#notes) for more).
 - **End a message**: All RESP messages end with `\r\n`.
 
 ## Examples
@@ -102,3 +103,6 @@ This isn't quite possible in Go, because Go is garbage collected.
 So true background saving is not supported.
 
 Saving RDB files has SHA256 checksum protection to ensure data is saved correctly.
+
+Real Redis has a much more complicated way of authenticating users called ACL (Access Control List).
+The implemented approach is much simpler. ACL involves a username and password, but this implementation only supports a password.

@@ -10,12 +10,14 @@ import (
 
 // A struct defining the data persistence settings
 type Config struct {
-	dir        string
-	rdb        []RDBSnapshot
-	rdbFn      string
-	aofEnabled bool
-	aofFn      string
-	aofFsync   FSyncMode
+	dir         string
+	rdb         []RDBSnapshot
+	rdbFn       string
+	aofEnabled  bool
+	aofFn       string
+	aofFsync    FSyncMode
+	requirepass bool
+	password    string
 }
 
 // NewConfig creates a new Config type with default values
@@ -120,5 +122,8 @@ func parseLine(line string, conf *Config) {
 		} else {
 			conf.aofEnabled = false
 		}
+	case "requirepass":
+		conf.requirepass = true
+		conf.password = args[1]
 	}
 }
