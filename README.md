@@ -100,3 +100,5 @@ To restore data, it takes all RESP strings from the file, parses them, and rerun
 `BGSAVE` uses `COW (Copy-On-Write)` in the actual Redis implementation. This uses an OS-provided memory optimization algorithm.
 This isn't quite possible in Go, because Go is garbage collected.
 So true background saving is not supported.
+
+Saving RDB files has SHA256 checksum protection to ensure data is saved correctly.
