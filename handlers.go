@@ -1,15 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"maps"
-	"net"
 	"path/filepath"
 )
 
 // Create a handler function type
-type Handler func(*Value, *AppState) *Value
+type Handler func(*Client, *Value, *AppState) *Value
 
 var Handlers = map[string]Handler{
 	"COMMAND": command,
@@ -22,36 +20,52 @@ var Handlers = map[string]Handler{
 	"BGSAVE":  bgsave,
 	"FLUSHDB": flushdb,
 	"DBSIZE":  dbsize,
+	"AUTH":    auth,
 }
 
-// handle takes a net.Conn and a Value type and calls the handler
+// These commands don't need auth
+var SafeCommands = []string{
+	"COMMAND",
+	"AUTH",
+}
+
+// handle takes a Client and a Value type and calls the handler
 // associated with the bulk string of the first message in the Value.
 // It then writes the reply from the handler back to the connection.
-func handle(conn net.Conn, v *Value, state *AppState) {
+func handle(client *Client, v *Value, state *AppState) {
 	// Get the bulk string of the first message
 	cmd := v.array[0].bulk
+
+	w := NewWriter(client.conn)
 
 	// Get the handler
 	handler, ok := Handlers[cmd]
 	if !ok {
-		fmt.Println("Invalid command: ", cmd)
+		w.Write(&Value{typ: ERROR, err: "ERR Invalid command"})
+		w.Flush()
+		return
+	}
+
+	// If auth is needed and we're not logged-in and the command isn't safe, NOAUTH error
+	if state.conf.requirepass && !client.authenticated && !contains(SafeCommands, cmd) {
+		w.Write(&Value{typ: ERROR, err: "NOAUTH Authentication required"})
+		w.Flush()
 		return
 	}
 
 	// Call the handler with the value
-	reply := handler(v, state)
-	w := NewWriter(conn)
+	reply := handler(client, v, state)
 	w.Write(reply)
 	w.Flush() // For network connections, always flush after writing
 }
 
 // command is a stub function that just returns a basic OK string message
-func command(v *Value, state *AppState) *Value {
+func command(client *Client, v *Value, state *AppState) *Value {
 	return &Value{typ: STRING, str: "OK"}
 }
 
 // get handles the case of GET Redis messages
-func get(v *Value, state *AppState) *Value {
+func get(client *Client, v *Value, state *AppState) *Value {
 	// GET can only take 1 argument
 	args := v.array[1:]
 	if len(args) != 1 {
@@ -73,7 +87,7 @@ func get(v *Value, state *AppState) *Value {
 }
 
 // set handles the case of SET Redis messages
-func set(v *Value, state *AppState) *Value {
+func set(client *Client, v *Value, state *AppState) *Value {
 	// SET must take 2 arguments
 	args := v.array[1:]
 	if len(args) != 2 {
@@ -107,7 +121,7 @@ func set(v *Value, state *AppState) *Value {
 }
 
 // del handles the case of DEL Redis messages
-func del(v *Value, state *AppState) *Value {
+func del(client *Client, v *Value, state *AppState) *Value {
 	args := v.array[1:]
 
 	var numDeleted int
@@ -128,7 +142,7 @@ func del(v *Value, state *AppState) *Value {
 }
 
 // exists handles the case of EXISTS Redis messages
-func exists(v *Value, state *AppState) *Value {
+func exists(client *Client, v *Value, state *AppState) *Value {
 	args := v.array[1:]
 
 	var numExists int
@@ -152,7 +166,7 @@ func exists(v *Value, state *AppState) *Value {
 // keys handles the case of KEYS Redis messages
 //
 // In prod, may be better to use SCAN
-func keys(v *Value, state *AppState) *Value {
+func keys(client *Client, v *Value, state *AppState) *Value {
 	args := v.array[1:]
 
 	// KEYS can only take 1 argument
@@ -195,13 +209,13 @@ func keys(v *Value, state *AppState) *Value {
 //
 // save is considered to be blocking because it uses
 // the `SaveRDB` function, which has a `RLock` on its critical section
-func save(v *Value, state *AppState) *Value {
+func save(client *Client, v *Value, state *AppState) *Value {
 	SaveRDB(state)
 	return &Value{typ: STRING, str: "OK"}
 }
 
 // bgsave handles the case of BGSAVE Redis messages
-func bgsave(v *Value, state *AppState) *Value {
+func bgsave(client *Client, v *Value, state *AppState) *Value {
 	if state.bgSaveRunning {
 		return &Value{typ: ERROR, err: "ERR Background saving already happening"}
 	}
@@ -229,7 +243,7 @@ func bgsave(v *Value, state *AppState) *Value {
 }
 
 // flushdb handles the case of FLUSHDB Redis messages
-func flushdb(v *Value, state *AppState) *Value {
+func flushdb(client *Client, v *Value, state *AppState) *Value {
 	// Instead of linearly going through each key and deleting it,
 	// just set the DB to a new, empty map
 	DB.mu.Lock()
@@ -239,10 +253,27 @@ func flushdb(v *Value, state *AppState) *Value {
 }
 
 // dbsize handles the case of DBSIZE Redis messages
-func dbsize(v *Value, state *AppState) *Value {
+func dbsize(client *Client, v *Value, state *AppState) *Value {
 	DB.mu.RLock()
 	size := len(DB.store)
 	DB.mu.RUnlock()
 
 	return &Value{typ: INTEGER, num: size}
+}
+
+// auth handles the case of AUTH Redis messages
+func auth(client *Client, v *Value, state *AppState) *Value {
+	args := v.array[1:]
+	if len(args) != 1 {
+		return &Value{typ: ERROR, err: "ERR Invalid number of arguments for 'AUTH' command"}
+	}
+
+	password := args[0].bulk
+	if state.conf.password == password {
+		client.authenticated = true
+		return &Value{typ: STRING, str: "OK"}
+	} else {
+		client.authenticated = false
+		return &Value{typ: ERROR, err: "ERR Invalid password"}
+	}
 }
