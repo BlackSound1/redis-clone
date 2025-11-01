@@ -34,6 +34,8 @@ Overview of RESP:
 - **Get how many keys are the in DB**: Use `DBSIZE` with no arguments to get how many keys are stored in the DB.
 - **Delete the whole DB**: To purge the whole DB, use `FLUSHDB` with no arguments.
 - **Authenticate**: All commands except `COMMAND` and `AUTH` require authentication to use. Use `AUTH <PASS>` to log in. By default, the password is `hey`, but this can be changed in the `redis.conf` file. (See [Notes](#notes) for more).
+- **Set an expiry for a key**: Use `EXPIRE <KEY> <SECONDS>` to set an expiry for a key. Once the expiry has passed, delete the key automatically. (See [Notes](#notes) for more).
+- **Check how long a key has left to live**: Use `TTL <KEY>`. Returns `-2` if no such key is found, `-1` is no expiry is found on the key, or any other number for the number of seconds left to live.
 - **End a message**: All RESP messages end with `\r\n`.
 
 ## Examples
@@ -99,10 +101,13 @@ To restore data, it takes all RESP strings from the file, parses them, and rerun
 ## Notes
 
 `BGSAVE` uses `COW (Copy-On-Write)` in the actual Redis implementation. This uses an OS-provided memory optimization algorithm.
-This isn't quite possible in Go, because Go is garbage collected.
-So true background saving is not supported.
+This isn't quite possible in Go, because Go is garbage collected. So true background saving is not supported.
 
 Saving RDB files has SHA256 checksum protection to ensure data is saved correctly.
 
 Real Redis has a much more complicated way of authenticating users called ACL (Access Control List).
 The implemented approach is much simpler. ACL involves a username and password, but this implementation only supports a password.
+
+Real Redis handles expiry in 2 ways: using `GET`,and other commands to see if a key is expired,
+or by using a background process to periodically check a sample of keys for expiry.
+This second method is not implemented here, and may never be.
