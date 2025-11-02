@@ -12,19 +12,20 @@ import (
 type Handler func(*Client, *Value, *AppState) *Value
 
 var Handlers = map[string]Handler{
-	"COMMAND": command,
-	"GET":     get,
-	"SET":     set,
-	"DEL":     del,
-	"EXISTS":  exists,
-	"KEYS":    keys,
-	"SAVE":    save,
-	"BGSAVE":  bgsave,
-	"FLUSHDB": flushdb,
-	"DBSIZE":  dbsize,
-	"AUTH":    auth,
-	"EXPIRE":  expire,
-	"TTL":     ttl,
+	"COMMAND":      command,
+	"GET":          get,
+	"SET":          set,
+	"DEL":          del,
+	"EXISTS":       exists,
+	"KEYS":         keys,
+	"SAVE":         save,
+	"BGSAVE":       bgsave,
+	"FLUSHDB":      flushdb,
+	"DBSIZE":       dbsize,
+	"AUTH":         auth,
+	"EXPIRE":       expire,
+	"TTL":          ttl,
+	"BGREWRITEAOF": bgrewriteaof,
 }
 
 // These commands don't need auth
@@ -356,4 +357,21 @@ func ttl(client *Client, v *Value, state *AppState) *Value {
 	}
 
 	return &Value{typ: INTEGER, num: secondsLeft}
+}
+
+// bgrewriteaof handles the case of BGREWRITEAOF Redis messages
+func bgrewriteaof(client *Client, v *Value, state *AppState) *Value {
+	// Start a new thread to let this be a background process
+	go func() {
+		// Copy the DB into a local variable
+		DB.mu.RLock()
+		copy := make(map[string]*Key, len(DB.store))
+		maps.Copy(copy, DB.store)
+		DB.mu.RUnlock()
+
+		// Start the rewriting
+		state.aof.Rewrite(copy)
+	}()
+
+	return &Value{typ: STRING, str: "Background AOF rewriting started"}
 }

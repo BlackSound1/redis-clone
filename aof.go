@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -49,4 +50,43 @@ func (aof *AOF) Sync() {
 		blankClient := Client{}
 		set(&blankClient, &v, blankState)
 	}
+}
+
+// Rewrite rewrites the AOF file to reflect the current state of the DB
+func (aof *AOF) Rewrite(copy map[string]*Key) {
+	// Reroute future AOF records to buffer because the file will be busy as we rewrite it
+	var buffer bytes.Buffer
+	aof.w = NewWriter(&buffer)
+
+	// Clear file
+	if err := aof.f.Truncate(0); err != nil {
+		log.Println("AOF rewrite - Truncate error: ", err)
+		return
+	}
+
+	// Go back to beginning of file for rewriting
+	if _, err := aof.f.Seek(0, 0); err != nil {
+		log.Println("AOF rewrite - Seek error: ", err)
+		return
+	}
+
+	// Create a new writer for the file
+	fileWriter := NewWriter(aof.f)
+
+	// An AOF file is just an ARRAY of SET strings
+	for k, v := range copy {
+		command := Value{typ: BULK, bulk: "SET"}
+		key := Value{typ: BULK, bulk: k}
+		value := Value{typ: BULK, bulk: v.V}
+
+		arr := Value{typ: ARRAY, array: []Value{
+			command, key, value,
+		}}
+		fileWriter.Write(&arr)
+	}
+
+	fileWriter.Flush()
+
+	// Reroute future AOF records back to file
+	aof.w = NewWriter(aof.f)
 }
