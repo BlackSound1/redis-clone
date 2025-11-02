@@ -36,6 +36,9 @@ Overview of RESP:
 - **Authenticate**: All commands except `COMMAND` and `AUTH` require authentication to use. Use `AUTH <PASS>` to log in. By default, the password is `hey`, but this can be changed in the `redis.conf` file. (See [Notes](#notes) for more).
 - **Set an expiry for a key**: Use `EXPIRE <KEY> <SECONDS>` to set an expiry for a key. Once the expiry has passed, delete the key automatically. (See [Notes](#notes) for more).
 - **Check how long a key has left to live**: Use `TTL <KEY>`. Returns `-2` if no such key is found, `-1` is no expiry is found on the key, or any other number for the number of seconds left to live.
+- **Update the AOF file with the latest version of the DB**: Since the AOF file is just a list of SET ARRAYs, this can become
+  outdated over time as the current state of the actual in-memory DB changes. Use `BGREWRITEAOF` to rewrite the AOF file from
+  scratch with only the current versions of each key.
 - **End a message**: All RESP messages end with `\r\n`.
 
 ## Examples
