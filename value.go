@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strconv"
+	"strings"
 )
 
 // Define the symbols that define a RESP message
@@ -28,21 +32,34 @@ type Value struct {
 	array []Value
 }
 
+// readLine reads a line from the user and trims the \r\n characters
+func readLine(reader *bufio.Reader) (string, error) {
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSuffix(line, "\r\n"), nil
+}
+
 // readArray reads an array RESP message from the given io.Reader into the Value type.
 // It first reads the length of the array, then reads that many bulk strings from the reader.
 // The bulk strings are added to the Value's array field
 func (v *Value) readArray(reader io.Reader) error {
-	// Read into a buffer. Must read 4 bytes
-	// because arrays are define as such: `*#\r\n`
-	buffer := make([]byte, 4)
-	_, err := reader.Read(buffer)
+
+	// Get the line from the user
+	r := bufio.NewReader(reader)
+	line, err := readLine(r)
 	if err != nil {
 		return err
 	}
 
-	// Since arrays have a length associated with it,
-	// read that length
-	arrLen, err := strconv.Atoi(string(buffer[1]))
+	// If the line doesn't begin with *, then it's not an ARRAY type
+	if line[0] != '*' {
+		return errors.New("expected array")
+	}
+
+	// Since arrays have a length associated with it, read that length
+	arrLen, err := strconv.Atoi(line[1:])
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -51,7 +68,7 @@ func (v *Value) readArray(reader io.Reader) error {
 	// Once we know how many bulk strings are in the message,
 	// read those and add them to the array
 	for range arrLen {
-		bulk := v.readBulk(reader)
+		bulk := v.readBulk(r)
 		v.array = append(v.array, bulk)
 	}
 
@@ -61,13 +78,15 @@ func (v *Value) readArray(reader io.Reader) error {
 // readBulk reads a bulk RESP message from the given io.Reader into the Value type.
 // It first reads the size of the bulk string, then reads that many bytes from the reader.
 // The bulk string is returned as a Value with the BULK type
-func (v *Value) readBulk(reader io.Reader) Value {
-	// Read the bulk buffer. Also must have 4 bytes
-	buffer := make([]byte, 4)
-	reader.Read(buffer)
+func (v *Value) readBulk(reader *bufio.Reader) Value {
+	line, err := readLine(reader)
+	if err != nil {
+		log.Println("Error in readBulk(): ", err)
+		return Value{}
+	}
 
 	// Get size of string in BULK buffer
-	n, err := strconv.Atoi(string(buffer[1]))
+	n, err := strconv.Atoi(line[1:])
 	if err != nil {
 		fmt.Println(err)
 		return Value{}
@@ -75,7 +94,12 @@ func (v *Value) readBulk(reader io.Reader) Value {
 
 	// Create buffer for the bulk string, including \r\n
 	bulkBuffer := make([]byte, n+2)
-	reader.Read(bulkBuffer)
+
+	// Read all of the reader into the bulkBuffer
+	if _, err := io.ReadFull(reader, bulkBuffer); err != nil {
+		fmt.Println(err)
+		return Value{}
+	}
 
 	// The actual bulk string doesn't include \r\n
 	bulk := string(bulkBuffer[:n])
