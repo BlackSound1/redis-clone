@@ -39,6 +39,10 @@ Overview of RESP:
 - **Update the AOF file with the latest version of the DB**: Since the AOF file is just a list of SET ARRAYs, this can become
   outdated over time as the current state of the actual in-memory DB changes. Use `BGREWRITEAOF` to rewrite the AOF file from
   scratch with only the current versions of each key.
+- **Queue commands into a transaction**: Use `MULTI` to start a transaction. This will put you into a sort of 'subshell' "(TX)" where you can queue up commands to run atomically later.
+  You can't use `MULTI` within a transaction. Input any commands you want and they will be "QUEUED". Use `DISCARD` to
+  leave the transaction without actually executing the commands. Otherwise, use `EXEC` to run them all, their
+  replies being output as a list.
 - **End a message**: All RESP messages end with `\r\n`.
 
 ## Examples
