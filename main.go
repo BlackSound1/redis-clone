@@ -94,7 +94,7 @@ type AppState struct {
 	conf          *Config
 	aof           *AOF
 	bgSaveRunning bool
-	dbCopy        map[string]*Key
+	dbCopy        map[string]*Item
 	transaction   *Transaction
 }
 

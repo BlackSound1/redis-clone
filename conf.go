@@ -21,6 +21,7 @@ type Config struct {
 	password    string
 	maxmem      int64
 	eviction    Eviction
+	memSamples  int
 }
 
 // NewConfig creates a new Config type with default values
@@ -47,7 +48,14 @@ const (
 type Eviction string
 
 const (
-	NoEviction Eviction = "noeviction"
+	NoEviction     Eviction = "noeviction"
+	AllKeysRandom  Eviction = "allkeys-random"
+	AllKeysLRU     Eviction = "allkeys-lru"
+	AllKeysLFU     Eviction = "allkeys-lfu"
+	VolatileRandom Eviction = "volatile-random"
+	VolatileLRU    Eviction = "volatile-lru"
+	VolatileLFU    Eviction = "volatile-lfu"
+	VolatileTTL    Eviction = "volatile-ttl"
 )
 
 // readConf reads a configuration file and returns a Config type
@@ -144,6 +152,14 @@ func parseLine(line string, conf *Config) {
 		conf.maxmem = maxmem
 	case "maxmemory-policy":
 		conf.eviction = Eviction(args[1])
+	case "maxmemory-samples":
+		memSamples, err := strconv.Atoi(args[1])
+		if err != nil {
+			log.Println("Can't parse maxmemory-samples. Defaulting to 50: ", err)
+			conf.memSamples = 50
+			break
+		}
+		conf.memSamples = memSamples
 	}
 
 }

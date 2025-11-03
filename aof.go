@@ -53,7 +53,7 @@ func (aof *AOF) Sync() {
 }
 
 // Rewrite rewrites the AOF file to reflect the current state of the DB
-func (aof *AOF) Rewrite(copy map[string]*Key) {
+func (aof *AOF) Rewrite(copy map[string]*Item) {
 	// Reroute future AOF records to buffer because the file will be busy as we rewrite it
 	var buffer bytes.Buffer
 	aof.w = NewWriter(&buffer)

@@ -98,23 +98,13 @@ func get(client *Client, v *Value, state *AppState) *Value {
 	// Get the bulk string from the DB, making sure to lock and unlock the
 	// critical section
 	name := args[0].bulk
-	DB.mu.RLock() // Only locked for reading
-	val, ok := DB.store[name]
-	DB.mu.RUnlock()
+	item, ok := DB.Get(name)
 	if !ok {
 		return &Value{typ: NULL}
 	}
 
-	// If there is an expiry that has passed, delete the key and return NULL
-	if val.Exp.Unix() != UNIX_TIMESTAMP && time.Until(val.Exp).Seconds() <= 0 {
-		DB.mu.Lock()
-		DB.Delete(name)
-		DB.mu.Unlock()
-		return &Value{typ: NULL}
-	}
-
 	// Create and return a new bulk string object based on the value
-	return &Value{typ: BULK, bulk: val.V}
+	return &Value{typ: BULK, bulk: item.V}
 }
 
 // set handles the case of SET Redis messages
@@ -256,7 +246,7 @@ func bgsave(client *Client, v *Value, state *AppState) *Value {
 	}
 
 	// Make a local copy of the DB
-	copy := make(map[string]*Key, len(DB.store))
+	copy := make(map[string]*Item, len(DB.store))
 	DB.mu.RLock()
 	maps.Copy(copy, DB.store)
 	DB.mu.RUnlock()
@@ -282,7 +272,7 @@ func flushdb(client *Client, v *Value, state *AppState) *Value {
 	// Instead of linearly going through each key and deleting it,
 	// just set the DB to a new, empty map
 	DB.mu.Lock()
-	DB.store = map[string]*Key{}
+	DB.store = map[string]*Item{}
 	DB.mu.Unlock()
 	return &Value{typ: STRING, str: "OK"}
 }
@@ -387,7 +377,7 @@ func bgrewriteaof(client *Client, v *Value, state *AppState) *Value {
 	go func() {
 		// Copy the DB into a local variable
 		DB.mu.RLock()
-		copy := make(map[string]*Key, len(DB.store))
+		copy := make(map[string]*Item, len(DB.store))
 		maps.Copy(copy, DB.store)
 		DB.mu.RUnlock()
 
