@@ -10,7 +10,7 @@ import (
 // A Database type containing a key, value store and
 // a mutex lock to allow concurrency
 type Database struct {
-	store map[string]*Key
+	store map[string]*Item
 	mu    sync.RWMutex
 	mem   int64
 }
@@ -18,7 +18,7 @@ type Database struct {
 // NewDatabase creates a new Database type
 func NewDatabase() *Database {
 	return &Database{
-		store: map[string]*Key{},
+		store: map[string]*Item{},
 		mu:    sync.RWMutex{},
 	}
 }
@@ -27,6 +27,33 @@ func NewDatabase() *Database {
 func (db *Database) evictKeys(state *AppState, requiredMem int64) error {
 	if state.conf.eviction == NoEviction {
 		return errors.New("maximum memory reached")
+	}
+
+	samples := sampleKeys(state)
+
+	// Local fn to check if enough memory has been freed
+	enoughMemoryFreed := func() bool {
+		if db.mem+requiredMem < state.conf.maxmem {
+			return true
+		} else {
+			return false
+		}
+	}
+
+	// Local fn to keep deleting keys from the sample keys until enough memory has been freed
+	evictUntilMemoryFreed := func(samples []sample) {
+		for _, s := range samples {
+			log.Println("EVICTING: ", s.k)
+			db.Delete(s.k)
+			if enoughMemoryFreed() {
+				break
+			}
+		}
+	}
+
+	switch state.conf.eviction {
+	case AllKeysRandom:
+		evictUntilMemoryFreed(samples)
 	}
 	return nil
 }
@@ -39,7 +66,7 @@ func (db *Database) Set(k string, v string, state *AppState) error {
 		db.mem -= oldMemory
 	}
 
-	key := &Key{V: v}
+	key := &Item{V: v}
 	keyMem := key.approxMemUsage(k)
 
 	// Check if we would be out of memory from this
@@ -51,7 +78,7 @@ func (db *Database) Set(k string, v string, state *AppState) error {
 		}
 	}
 
-	db.store[k] = &Key{V: v}
+	db.store[k] = &Item{V: v}
 	db.mem += keyMem
 	log.Println("MEMORY: ", db.mem)
 
@@ -70,16 +97,53 @@ func (db *Database) Delete(k string) {
 	log.Println("MEMORY: ", db.mem)
 }
 
+// Get is a "public" method to get a key from the database
+func (db *Database) Get(key string) (i *Item, ok bool) {
+	db.mu.RLock()
+	item, ok := db.store[key]
+	if !ok {
+		return item, ok
+	}
+	expired := db.tryToExpire(key, item)
+	if expired {
+		db.mu.RUnlock()
+		return &Item{}, false
+	}
+	item.Accesses++
+	item.LastAccess = time.Now()
+	db.mu.RUnlock()
+	return item, ok
+}
+
+// tryToExpire checks if the given key has expired and should be deleted from the DB
+func (db *Database) tryToExpire(key string, item *Item) bool {
+	// If there is an expiry that has passed, delete the key and return NULL
+	if item.shouldExpire() {
+		DB.mu.Lock()
+		DB.Delete(key)
+		DB.mu.Unlock()
+		return true
+	}
+	return false
+}
+
 var DB = NewDatabase()
 
 // Creating a key allows us to store expiry time
-type Key struct {
-	V   string
-	Exp time.Time
+type Item struct {
+	V          string
+	Exp        time.Time
+	LastAccess time.Time
+	Accesses   int
+}
+
+// shouldExpire decides whether the current item should be expired
+func (item *Item) shouldExpire() bool {
+	return item.Exp.Unix() != UNIX_TIMESTAMP && time.Until(item.Exp).Seconds() <= 0
 }
 
 // approxMemUsage approximates the memory usage of a key, given its name
-func (key *Key) approxMemUsage(name string) int64 {
+func (key *Item) approxMemUsage(name string) int64 {
 	stringHeaderSize := 16 // Bytes
 	expiryHeaderSize := 24
 	mapEntrySize := 32 // Structs are basically maps which have their own headers

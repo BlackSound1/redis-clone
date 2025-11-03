@@ -44,11 +44,10 @@ func readLine(reader *bufio.Reader) (string, error) {
 // readArray reads an array RESP message from the given io.Reader into the Value type.
 // It first reads the length of the array, then reads that many bulk strings from the reader.
 // The bulk strings are added to the Value's array field
-func (v *Value) readArray(reader io.Reader) error {
+func (v *Value) readArray(reader *bufio.Reader) error {
 
 	// Get the line from the user
-	r := bufio.NewReader(reader)
-	line, err := readLine(r)
+	line, err := readLine(reader)
 	if err != nil {
 		return err
 	}
@@ -68,7 +67,11 @@ func (v *Value) readArray(reader io.Reader) error {
 	// Once we know how many bulk strings are in the message,
 	// read those and add them to the array
 	for range arrLen {
-		bulk := v.readBulk(r)
+		bulk, err := v.readBulk(reader)
+		if err != nil {
+			log.Println(err)
+			break
+		}
 		v.array = append(v.array, bulk)
 	}
 
@@ -78,18 +81,16 @@ func (v *Value) readArray(reader io.Reader) error {
 // readBulk reads a bulk RESP message from the given io.Reader into the Value type.
 // It first reads the size of the bulk string, then reads that many bytes from the reader.
 // The bulk string is returned as a Value with the BULK type
-func (v *Value) readBulk(reader *bufio.Reader) Value {
+func (v *Value) readBulk(reader *bufio.Reader) (Value, error) {
 	line, err := readLine(reader)
 	if err != nil {
-		log.Println("Error in readBulk(): ", err)
-		return Value{}
+		return Value{}, err
 	}
 
 	// Get size of string in BULK buffer
 	n, err := strconv.Atoi(line[1:])
 	if err != nil {
-		fmt.Println(err)
-		return Value{}
+		return Value{}, err
 	}
 
 	// Create buffer for the bulk string, including \r\n
@@ -97,12 +98,11 @@ func (v *Value) readBulk(reader *bufio.Reader) Value {
 
 	// Read all of the reader into the bulkBuffer
 	if _, err := io.ReadFull(reader, bulkBuffer); err != nil {
-		fmt.Println(err)
-		return Value{}
+		return Value{}, err
 	}
 
 	// The actual bulk string doesn't include \r\n
 	bulk := string(bulkBuffer[:n])
 
-	return Value{typ: BULK, bulk: bulk}
+	return Value{typ: BULK, bulk: bulk}, nil
 }
