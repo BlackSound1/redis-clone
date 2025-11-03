@@ -89,11 +89,13 @@ func NewClient(conn net.Conn) *Client {
 	return &Client{conn: conn}
 }
 
+// Track various context variables useful across the whole app
 type AppState struct {
 	conf          *Config
 	aof           *AOF
 	bgSaveRunning bool
 	dbCopy        map[string]*Key
+	transaction   *Transaction
 }
 
 // NewAppState creates a new AppState type with the given Config settings

@@ -26,6 +26,9 @@ var Handlers = map[string]Handler{
 	"EXPIRE":       expire,
 	"TTL":          ttl,
 	"BGREWRITEAOF": bgrewriteaof,
+	"MULTI":        multi,
+	"EXEC":         _exec, // exec is a Go builtin
+	"DISCARD":      discard,
 }
 
 // These commands don't need auth
@@ -58,7 +61,22 @@ func handle(client *Client, v *Value, state *AppState) {
 		return
 	}
 
-	// Call the handler with the value
+	// If there's a transaction happening and the command isn't one of the commands that can end it...
+	if state.transaction != nil && cmd != "EXEC" && cmd != "DISCARD" {
+		// Can't start MULTI if already in MULTI
+		if cmd == "MULTI" {
+			w.Write(&Value{typ: ERROR, err: "ERR MULTI calls can't be nested"})
+			w.Flush()
+			return
+		}
+		// Queue the given command
+		transactionCommand := TxCommand{v: v, handler: handler}
+		state.transaction.commands = append(state.transaction.commands, &transactionCommand)
+		w.Write(&Value{typ: STRING, str: "QUEUED"})
+		w.Flush()
+		return
+	}
+
 	reply := handler(client, v, state)
 	w.Write(reply)
 	w.Flush() // For network connections, always flush after writing
@@ -374,4 +392,48 @@ func bgrewriteaof(client *Client, v *Value, state *AppState) *Value {
 	}()
 
 	return &Value{typ: STRING, str: "Background AOF rewriting started"}
+}
+
+// multi handles the case of MULTI Redis messages
+func multi(client *Client, v *Value, state *AppState) *Value {
+	// Create a new transaction for the current app state
+	state.transaction = NewTransaction()
+
+	return &Value{typ: STRING, str: "OK"}
+}
+
+// _exec handles the case of EXEC Redis messages
+func _exec(client *Client, v *Value, state *AppState) *Value {
+	// Can't EXEC a non-existent MULTI
+	if state.transaction == nil {
+		return &Value{typ: ERROR, err: "ERR EXEC without active MULTI"}
+	}
+
+	// Get a list of the replies to each command
+	replies := make([]Value, len(state.transaction.commands))
+	for i, cmd := range state.transaction.commands {
+		reply := cmd.handler(client, cmd.v, state)
+		// Direct assignment preferred over append() for performance
+		// because we already have size of final list. No need for constant reallocation
+		replies[i] = *reply
+	}
+
+	reply := Value{typ: ARRAY, array: replies}
+
+	state.transaction = nil // End the transaction
+
+	return &reply
+}
+
+// discard handles the case of DISCARD Redis messages
+func discard(client *Client, v *Value, state *AppState) *Value {
+	// Can't discard a MULTI if there is no MULTI
+	if state.transaction == nil {
+		return &Value{typ: ERROR, err: "ERR DISCARD without active MULTI"}
+	}
+
+	// Delete current MULTI
+	state.transaction = nil
+
+	return &Value{typ: STRING, str: "OK"}
 }
