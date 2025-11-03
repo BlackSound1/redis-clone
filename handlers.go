@@ -129,7 +129,11 @@ func set(client *Client, v *Value, state *AppState) *Value {
 	key := args[0].bulk
 	val := args[1].bulk
 	DB.mu.Lock()
-	DB.Set(key, val)
+	err := DB.Set(key, val, state)
+	if err != nil {
+		DB.mu.Unlock()
+		return &Value{typ: ERROR, err: "ERR " + err.Error()}
+	}
 
 	// If AOF is enabled, write to its buffer
 	if state.conf.aofEnabled {
@@ -162,7 +166,7 @@ func del(client *Client, v *Value, state *AppState) *Value {
 	// Go through all keys to delete (may be multiple)
 	for _, arg := range args {
 		_, ok := DB.store[arg.bulk]
-		delete(DB.store, arg.bulk)
+		DB.Delete(arg.bulk)
 		if ok {
 			numDeleted++
 		}
