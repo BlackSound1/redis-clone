@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -34,9 +35,10 @@ func NewAOF(conf *Config) *AOF {
 
 // Sync reads all RESP messages from the AOF file and applies all SET commands found in it
 func (aof *AOF) Sync() {
+	r := bufio.NewReader(aof.f)
 	for {
 		v := Value{}
-		err := v.readArray(aof.f)
+		err := v.readArray(r)
 		if err == io.EOF {
 			break
 		}
