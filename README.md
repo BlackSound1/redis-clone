@@ -43,6 +43,7 @@ Overview of RESP:
   You can't use `MULTI` within a transaction. Input any commands you want and they will be "QUEUED". Use `DISCARD` to
   leave the transaction without actually executing the commands. Otherwise, use `EXEC` to run them all, their
   replies being output as a list.
+- **Monitor other clients**: On a given client, use `MONITOR` to receive logs about other clients.
 - **End a message**: All RESP messages end with `\r\n`.
 
 ## Examples
