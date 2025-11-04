@@ -60,6 +60,18 @@ func handleConn(conn net.Conn, state *AppState) {
 	log.Println("Accepted new connection: ", conn.LocalAddr().String())
 	client := NewClient(conn)
 	reader := bufio.NewReader(conn)
+
+	// Essentially, removes all clients that aren't monitors
+	defer func() {
+		new := state.monitors[:0]
+		for _, monitor := range state.monitors {
+			if monitor != client {
+				new = append(new, monitor)
+			}
+		}
+		state.monitors = new
+	}()
+
 	for {
 		v := Value{typ: ARRAY}
 		if err := v.readArray(reader); err != nil {

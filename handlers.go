@@ -29,6 +29,7 @@ var Handlers = map[string]Handler{
 	"MULTI":        multi,
 	"EXEC":         _exec, // exec is a Go builtin
 	"DISCARD":      discard,
+	"MONITOR":      monitor,
 }
 
 // These commands don't need auth
@@ -80,6 +81,15 @@ func handle(client *Client, v *Value, state *AppState) {
 	reply := handler(client, v, state)
 	w.Write(reply)
 	w.Flush() // For network connections, always flush after writing
+
+	// Write the command to the monitor log (as long as the monitor isn't the client itself)
+	go func() {
+		for _, monitor := range state.monitors {
+			if monitor != client {
+				monitor.writeMonitorLog(v)
+			}
+		}
+	}()
 }
 
 // command is a stub function that just returns a basic OK string message
@@ -429,5 +439,12 @@ func discard(client *Client, v *Value, state *AppState) *Value {
 	// Delete current MULTI
 	state.transaction = nil
 
+	return &Value{typ: STRING, str: "OK"}
+}
+
+// monitor handles the case of MONITOR Redis messages
+func monitor(client *Client, v *Value, state *AppState) *Value {
+	// Add the current client to the list of monitors
+	state.monitors = append(state.monitors, client)
 	return &Value{typ: STRING, str: "OK"}
 }

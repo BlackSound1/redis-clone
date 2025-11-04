@@ -9,6 +9,7 @@ type AppState struct {
 	bgSaveRunning bool
 	dbCopy        map[string]*Item
 	transaction   *Transaction
+	monitors      []*Client
 }
 
 // NewAppState creates a new AppState type with the given Config settings
