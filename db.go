@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"log"
+	"sort"
 	"sync"
 	"time"
 )
@@ -53,6 +54,12 @@ func (db *Database) evictKeys(state *AppState, requiredMem int64) error {
 
 	switch state.conf.eviction {
 	case AllKeysRandom:
+		evictUntilMemoryFreed(samples)
+	case AllKeysLRU:
+		// Sort by least recently used
+		sort.Slice(samples, func(i, j int) bool {
+			return samples[i].v.LastAccess.After(samples[j].v.LastAccess)
+		})
 		evictUntilMemoryFreed(samples)
 	}
 	return nil
