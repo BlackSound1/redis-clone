@@ -30,6 +30,7 @@ func (db *Database) evictKeys(state *AppState, requiredMem int64) error {
 		return errors.New("maximum memory reached")
 	}
 
+	// Get a sample of the keys in the DB
 	samples := sampleKeys(state)
 
 	// Local fn to check if enough memory has been freed
@@ -52,6 +53,7 @@ func (db *Database) evictKeys(state *AppState, requiredMem int64) error {
 		}
 	}
 
+	// Evict based on eviction policy
 	switch state.conf.eviction {
 	case AllKeysRandom:
 		evictUntilMemoryFreed(samples)
@@ -59,6 +61,12 @@ func (db *Database) evictKeys(state *AppState, requiredMem int64) error {
 		// Sort by least recently used
 		sort.Slice(samples, func(i, j int) bool {
 			return samples[i].v.LastAccess.After(samples[j].v.LastAccess)
+		})
+		evictUntilMemoryFreed(samples)
+	case AllKeysLFU:
+		// Sort by least frequently used
+		sort.Slice(samples, func(i, j int) bool {
+			return samples[i].v.Accesses < samples[j].v.Accesses
 		})
 		evictUntilMemoryFreed(samples)
 	}
