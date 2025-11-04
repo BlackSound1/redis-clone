@@ -115,18 +115,18 @@ func (db *Database) Delete(k string) {
 // Get is a "public" method to get a key from the database
 func (db *Database) Get(key string) (i *Item, ok bool) {
 	db.mu.RLock()
+	defer db.mu.RUnlock()
+
 	item, ok := db.store[key]
 	if !ok {
 		return item, ok
 	}
 	expired := db.tryToExpire(key, item)
 	if expired {
-		db.mu.RUnlock()
 		return &Item{}, false
 	}
 	item.Accesses++
 	item.LastAccess = time.Now()
-	db.mu.RUnlock()
 	return item, ok
 }
 
@@ -143,43 +143,3 @@ func (db *Database) tryToExpire(key string, item *Item) bool {
 }
 
 var DB = NewDatabase()
-
-// Creating a key allows us to store expiry time
-type Item struct {
-	V          string
-	Exp        time.Time
-	LastAccess time.Time
-	Accesses   int
-}
-
-// shouldExpire decides whether the current item should be expired
-func (item *Item) shouldExpire() bool {
-	return item.Exp.Unix() != UNIX_TIMESTAMP && time.Until(item.Exp).Seconds() <= 0
-}
-
-// approxMemUsage approximates the memory usage of a key, given its name
-func (key *Item) approxMemUsage(name string) int64 {
-	stringHeaderSize := 16 // Bytes
-	expiryHeaderSize := 24
-	mapEntrySize := 32 // Structs are basically maps which have their own headers
-
-	return int64(stringHeaderSize + len(name) + stringHeaderSize + len(key.V) + expiryHeaderSize + mapEntrySize)
-}
-
-// A Transaction is made of multiple commands
-type Transaction struct {
-	commands []*TxCommand
-}
-
-// NewTransaction creates a new Transaction type to group
-// multiple commands together and execute them atomically.
-// Used to implement the MULTI and EXEC commands
-func NewTransaction() *Transaction {
-	return &Transaction{}
-}
-
-// TxCommand is a command to be executed in a transaction
-type TxCommand struct {
-	v       *Value
-	handler Handler
-}

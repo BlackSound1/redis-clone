@@ -39,8 +39,6 @@ func main() {
 	defer l.Close()
 	log.Println("Listening on port 6379")
 
-	var wg sync.WaitGroup
-
 	for {
 		// Block until connection is made
 		conn, err := l.Accept()
@@ -50,13 +48,10 @@ func main() {
 		}
 
 		// Wait for 1 goroutine to finish
-		wg.Add(1)
 		go func() {
 			handleConn(conn, state)
-			wg.Done() // Decrement wg counter by 1
 		}()
 	}
-	wg.Wait() // Block until wg counter is 0
 }
 
 // handleConn calls the handler associated with the bulk string of the first message in the Value.
@@ -78,52 +73,4 @@ func handleConn(conn net.Conn, state *AppState) {
 		fmt.Println(v.array)
 	}
 	log.Println("Connection closed: ", conn.LocalAddr().String())
-}
-
-type Client struct {
-	conn          net.Conn
-	authenticated bool
-}
-
-// NewClient creates a new Client type with a given net.Conn and authenticated set to false.
-// Keeps track of the state of each client connection
-func NewClient(conn net.Conn) *Client {
-	return &Client{conn: conn}
-}
-
-// Track various context variables useful across the whole app
-type AppState struct {
-	conf          *Config
-	aof           *AOF
-	bgSaveRunning bool
-	dbCopy        map[string]*Item
-	transaction   *Transaction
-}
-
-// NewAppState creates a new AppState type with the given Config settings
-// If the Config type specifies that AOF should be enabled, it will create a new AOF type
-// and, if necessary, a new goroutine to flush the writer every second
-func NewAppState(conf *Config) *AppState {
-	state := AppState{
-		conf: conf,
-	}
-
-	if conf.aofEnabled {
-		state.aof = NewAOF(conf)
-
-		// If aofSync mode is everysec, set up a new goroutine
-		// that, every second, flushes the writers buffer
-		if conf.aofFsync == EverySec {
-			go func() {
-				t := time.NewTicker(time.Second)
-				defer t.Stop()
-
-				for range t.C {
-					state.aof.w.Flush()
-				}
-			}()
-		}
-	}
-
-	return &state
 }
