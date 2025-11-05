@@ -30,6 +30,7 @@ var Handlers = map[string]Handler{
 	"EXEC":         _exec, // exec is a Go builtin
 	"DISCARD":      discard,
 	"MONITOR":      monitor,
+	"INFO":         info,
 }
 
 // These commands don't need auth
@@ -82,6 +83,8 @@ func handle(client *Client, v *Value, state *AppState) {
 	w.Write(reply)
 	w.Flush() // For network connections, always flush after writing
 
+	state.generalStats.total_commands_processed++
+
 	// Write the command to the monitor log (as long as the monitor isn't the client itself)
 	go func() {
 		for _, monitor := range state.monitors {
@@ -108,7 +111,7 @@ func get(client *Client, v *Value, state *AppState) *Value {
 	// Get the bulk string from the DB, making sure to lock and unlock the
 	// critical section
 	name := args[0].bulk
-	item, ok := DB.Get(name)
+	item, ok := DB.Get(name, state)
 	if !ok {
 		return &Value{typ: NULL}
 	}
@@ -352,7 +355,7 @@ func ttl(client *Client, v *Value, state *AppState) *Value {
 	keyToTTL := args[0].bulk
 
 	DB.mu.RLock()
-	key, ok := DB.store[keyToTTL]
+	item, ok := DB.store[keyToTTL]
 	DB.mu.RUnlock()
 
 	// If no key, return -2
@@ -360,7 +363,7 @@ func ttl(client *Client, v *Value, state *AppState) *Value {
 		return &Value{typ: INTEGER, num: -2}
 	}
 
-	exp := key.Exp
+	exp := item.Exp
 
 	// If the expiry is set to its default value (beginning of Unix time),
 	// then assume no expiry is set and return -1
@@ -368,13 +371,12 @@ func ttl(client *Client, v *Value, state *AppState) *Value {
 		return &Value{typ: INTEGER, num: -1}
 	}
 
+	expired := DB.tryToExpire(keyToTTL, item, state)
+
 	secondsLeft := int(time.Until(exp).Seconds())
 
 	// If key is expired, delete it and return -2 because it doesn't exist anymore
-	if secondsLeft <= 0 {
-		DB.mu.Lock()
-		DB.Delete(keyToTTL)
-		DB.mu.Unlock()
+	if expired {
 		return &Value{typ: INTEGER, num: -2}
 	}
 
@@ -392,7 +394,11 @@ func bgrewriteaof(client *Client, v *Value, state *AppState) *Value {
 		DB.mu.RUnlock()
 
 		// Start the rewriting
+		state.aofRewriteRunning = true
 		state.aof.Rewrite(copy)
+		state.aofRewriteRunning = false
+
+		state.aofStats.aof_rewrites++
 	}()
 
 	return &Value{typ: STRING, str: "Background AOF rewriting started"}
@@ -447,4 +453,10 @@ func monitor(client *Client, v *Value, state *AppState) *Value {
 	// Add the current client to the list of monitors
 	state.monitors = append(state.monitors, client)
 	return &Value{typ: STRING, str: "OK"}
+}
+
+// info handles the case of INFO Redis messages
+func info(client *Client, v *Value, state *AppState) *Value {
+	msg := "\n" + state.info.print(state)
+	return &Value{typ: BULK, bulk: msg}
 }

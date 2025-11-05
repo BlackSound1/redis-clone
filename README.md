@@ -44,6 +44,7 @@ Overview of RESP:
   leave the transaction without actually executing the commands. Otherwise, use `EXEC` to run them all, their
   replies being output as a list.
 - **Monitor other clients**: On a given client, use `MONITOR` to receive logs about other clients.
+- **Get info about the server**: Use `INFO` to get server, client, memory, persistence, and general statistics.
 - **End a message**: All RESP messages end with `\r\n`.
 
 ## Examples

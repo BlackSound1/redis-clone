@@ -43,32 +43,38 @@ func (db *Database) evictKeys(state *AppState, requiredMem int64) error {
 	}
 
 	// Local fn to keep deleting keys from the sample keys until enough memory has been freed
-	evictUntilMemoryFreed := func(samples []sample) {
+	evictUntilMemoryFreed := func(samples []sample) int {
+		var n int
 		for _, s := range samples {
 			log.Println("EVICTING: ", s.k)
 			db.Delete(s.k)
+			n++
 			if enoughMemoryFreed() {
 				break
 			}
 		}
+		return n
 	}
 
 	// Evict based on eviction policy
 	switch state.conf.eviction {
 	case AllKeysRandom:
-		evictUntilMemoryFreed(samples)
+		evictedKeys := evictUntilMemoryFreed(samples)
+		state.generalStats.evicted_keys += evictedKeys
 	case AllKeysLRU:
 		// Sort by least recently used
 		sort.Slice(samples, func(i, j int) bool {
 			return samples[i].v.LastAccess.After(samples[j].v.LastAccess)
 		})
-		evictUntilMemoryFreed(samples)
+		evictedKeys := evictUntilMemoryFreed(samples)
+		state.generalStats.evicted_keys += evictedKeys
 	case AllKeysLFU:
 		// Sort by least frequently used
 		sort.Slice(samples, func(i, j int) bool {
 			return samples[i].v.Accesses < samples[j].v.Accesses
 		})
-		evictUntilMemoryFreed(samples)
+		evictedKeys := evictUntilMemoryFreed(samples)
+		state.generalStats.evicted_keys += evictedKeys
 	}
 	return nil
 }
@@ -97,6 +103,10 @@ func (db *Database) Set(k string, v string, state *AppState) error {
 	db.mem += keyMem
 	log.Println("MEMORY: ", db.mem)
 
+	if db.mem > state.peakMem {
+		state.peakMem = db.mem
+	}
+
 	return nil
 }
 
@@ -113,7 +123,7 @@ func (db *Database) Delete(k string) {
 }
 
 // Get is a "public" method to get a key from the database
-func (db *Database) Get(key string) (i *Item, ok bool) {
+func (db *Database) Get(key string, state *AppState) (i *Item, ok bool) {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 
@@ -121,7 +131,7 @@ func (db *Database) Get(key string) (i *Item, ok bool) {
 	if !ok {
 		return item, ok
 	}
-	expired := db.tryToExpire(key, item)
+	expired := db.tryToExpire(key, item, state)
 	if expired {
 		return &Item{}, false
 	}
@@ -131,12 +141,13 @@ func (db *Database) Get(key string) (i *Item, ok bool) {
 }
 
 // tryToExpire checks if the given key has expired and should be deleted from the DB
-func (db *Database) tryToExpire(key string, item *Item) bool {
+func (db *Database) tryToExpire(key string, item *Item, state *AppState) bool {
 	// If there is an expiry that has passed, delete the key and return NULL
 	if item.shouldExpire() {
 		DB.mu.Lock()
 		DB.Delete(key)
 		DB.mu.Unlock()
+		state.generalStats.expired_keys++
 		return true
 	}
 	return false

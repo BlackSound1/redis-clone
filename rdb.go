@@ -134,6 +134,9 @@ func SaveRDB(state *AppState) {
 	}
 
 	log.Println("Saved RDB file successfully")
+
+	state.rdbStats.rdb_last_save_ts = time.Now().Unix()
+	state.rdbStats.rdb_saves++
 }
 
 // SyncRDB reads the contents of the RDB file and decodes it into the

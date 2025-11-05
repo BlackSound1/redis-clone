@@ -21,7 +21,7 @@ func main() {
 
 	if conf.aofEnabled {
 		log.Println("Syncing AOF records")
-		state.aof.Sync()
+		state.aof.Sync(conf.maxmem, conf.eviction, conf.memSamples)
 	}
 
 	// If there are any RDB snapshots, save to memory any RDB values saved to the file
@@ -71,6 +71,13 @@ func handleConn(conn net.Conn, state *AppState) {
 		}
 		state.monitors = new
 	}()
+
+	state.clientCount++
+	defer func() {
+		state.clientCount--
+	}()
+
+	state.generalStats.total_connections_received++
 
 	for {
 		v := Value{typ: ARRAY}
