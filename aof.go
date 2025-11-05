@@ -34,7 +34,7 @@ func NewAOF(conf *Config) *AOF {
 }
 
 // Sync reads all RESP messages from the AOF file and applies all SET commands found in it
-func (aof *AOF) Sync() {
+func (aof *AOF) Sync(maxmem int64, evictionPolicy Eviction, memSamples int) {
 	r := bufio.NewReader(aof.f)
 	for {
 		v := Value{}
@@ -48,7 +48,11 @@ func (aof *AOF) Sync() {
 		}
 
 		// Want a blank app state without AOF enabled
-		blankState := NewAppState(&Config{})
+		blankState := NewAppState(&Config{
+			maxmem:     maxmem,
+			eviction:   evictionPolicy,
+			memSamples: memSamples,
+		})
 		blankClient := Client{}
 		set(&blankClient, &v, blankState)
 	}

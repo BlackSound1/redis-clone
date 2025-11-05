@@ -21,7 +21,7 @@ func main() {
 
 	if conf.aofEnabled {
 		log.Println("Syncing AOF records")
-		state.aof.Sync()
+		state.aof.Sync(conf.maxmem, conf.eviction, conf.memSamples)
 	}
 
 	// If there are any RDB snapshots, save to memory any RDB values saved to the file
