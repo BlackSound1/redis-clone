@@ -72,6 +72,13 @@ func handleConn(conn net.Conn, state *AppState) {
 		state.monitors = new
 	}()
 
+	state.clientCount++
+	defer func() {
+		state.clientCount--
+	}()
+
+	state.generalStats.total_connections_received++
+
 	for {
 		v := Value{typ: ARRAY}
 		if err := v.readArray(reader); err != nil {

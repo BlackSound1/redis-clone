@@ -11,6 +11,7 @@ import (
 
 // A struct defining the data persistence settings
 type Config struct {
+	config_file string
 	dir         string
 	rdb         []RDBSnapshot
 	rdbFn       string
@@ -71,6 +72,8 @@ func readConf(filename string) *Config {
 		return conf
 	}
 	defer f.Close()
+
+	conf.config_file = filename
 
 	s := bufio.NewScanner(f)
 
