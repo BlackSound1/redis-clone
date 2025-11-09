@@ -164,7 +164,6 @@ func parseLine(line string, conf *Config) {
 		}
 		conf.memSamples = memSamples
 	}
-
 }
 
 // parseMem takes a string representing a memory size and returns an int64 value
