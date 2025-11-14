@@ -95,10 +95,10 @@ Set how memory is handled.
   - `allkeys-random`: Take a sample of keys and evict until there's enough memory left.
   - `allkeys-lru`: Similar to `allkeys-random`, but sort these random keys by which was least recently used.
   - `allkeys-lfu`: Similar to `allkeys-random`, but sort these random keys by which was least frequently used.
-  - `volatile-random`: *Not implemented*.
-  - `volatile-lru`: *Not implemented*.
-  - `volatile-lfu`: *Not implemented*.
-  - `volatile-ttl`: *Not implemented*.
+  - `volatile-random`: Same as `allkeys-random`, but only choose among the expiring keys.
+  - `volatile-lru`: Same as `allkeys-lru`, but only choose among the expiring keys.
+  - `volatile-lfu`: Same as `allkeys-lfu`, but only choose among the expiring keys.
+  - `volatile-ttl`: Among the expiring keys, evict the keys that are closest to expiring.
 - `maxmemory-samples numOfSamples`: For performance, only take `numOfSamples` keys from the DB to see if freeing them would satisfy the chosen eviction policy.
 
 # An Overview of RESP
