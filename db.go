@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -11,16 +12,18 @@ import (
 // A Database type containing a key, value store and
 // a mutex lock to allow concurrency
 type Database struct {
-	store map[string]*Item
-	mu    sync.RWMutex
-	mem   int64
+	store         map[string]*Item
+	expiringStore map[string]*Item
+	mu            sync.RWMutex
+	mem           int64
 }
 
 // NewDatabase creates a new Database type
 func NewDatabase() *Database {
 	return &Database{
-		store: map[string]*Item{},
-		mu:    sync.RWMutex{},
+		store:         map[string]*Item{},
+		expiringStore: map[string]*Item{},
+		mu:            sync.RWMutex{},
 	}
 }
 
@@ -31,7 +34,17 @@ func (db *Database) evictKeys(state *AppState, requiredMem int64) error {
 	}
 
 	// Get a sample of the keys in the DB
-	samples := sampleKeys(state)
+	var samples []sample
+	if strings.Contains(string(state.conf.eviction), "volatile") {
+		samples = sampleKeys(state, true)
+	} else {
+		samples = sampleKeys(state, false)
+	}
+
+	log.Println("Evicting keys from these samples")
+	for _, key := range samples {
+		log.Printf("Key: %s, Value: %v, TTL: %v\n", key.k, key.v.V, time.Until(key.v.Exp).Seconds())
+	}
 
 	// Local fn to check if enough memory has been freed
 	enoughMemoryFreed := func() bool {
@@ -58,20 +71,27 @@ func (db *Database) evictKeys(state *AppState, requiredMem int64) error {
 
 	// Evict based on eviction policy
 	switch state.conf.eviction {
-	case AllKeysRandom:
+	case AllKeysRandom, VolatileRandom:
 		evictedKeys := evictUntilMemoryFreed(samples)
 		state.generalStats.evicted_keys += evictedKeys
-	case AllKeysLRU:
+	case AllKeysLRU, VolatileLRU:
 		// Sort by least recently used
 		sort.Slice(samples, func(i, j int) bool {
 			return samples[i].v.LastAccess.After(samples[j].v.LastAccess)
 		})
 		evictedKeys := evictUntilMemoryFreed(samples)
 		state.generalStats.evicted_keys += evictedKeys
-	case AllKeysLFU:
+	case AllKeysLFU, VolatileLFU:
 		// Sort by least frequently used
 		sort.Slice(samples, func(i, j int) bool {
 			return samples[i].v.Accesses < samples[j].v.Accesses
+		})
+		evictedKeys := evictUntilMemoryFreed(samples)
+		state.generalStats.evicted_keys += evictedKeys
+	case VolatileTTL:
+		// Sort by closest TTL
+		sort.Slice(samples, func(i, j int) bool {
+			return samples[i].v.Exp.Before(samples[j].v.Exp)
 		})
 		evictedKeys := evictUntilMemoryFreed(samples)
 		state.generalStats.evicted_keys += evictedKeys
@@ -120,6 +140,12 @@ func (db *Database) Delete(k string) {
 	delete(db.store, k)
 	db.mem -= keyMemory
 	log.Println("MEMORY: ", db.mem)
+
+	// Try to delete from the expiring store, too
+	_, ok = db.expiringStore[k]
+	if ok {
+		delete(db.expiringStore, k)
+	}
 }
 
 // Get is a "public" method to get a key from the database

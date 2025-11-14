@@ -286,6 +286,7 @@ func flushdb(client *Client, v *Value, state *AppState) *Value {
 	// just set the DB to a new, empty map
 	DB.mu.Lock()
 	DB.store = map[string]*Item{}
+	DB.expiringStore = map[string]*Item{}
 	DB.mu.Unlock()
 	return &Value{typ: STRING, str: "OK"}
 }
@@ -340,6 +341,7 @@ func expire(client *Client, v *Value, state *AppState) *Value {
 		return &Value{typ: INTEGER, num: 0}
 	}
 	key.Exp = time.Now().Add(time.Second * time.Duration(expirySeconds))
+	DB.expiringStore[keyToExpire] = &Item{V: key.V, Exp: key.Exp}
 	DB.mu.RUnlock()
 
 	return &Value{typ: INTEGER, num: 1}
