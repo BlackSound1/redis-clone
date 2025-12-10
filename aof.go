@@ -93,6 +93,11 @@ func (aof *AOF) Rewrite(copy map[string]*Item) {
 
 	fileWriter.Flush()
 
+	// Write the buffer to the file
+	if _, err := buffer.WriteTo(aof.f); err != nil {
+		log.Println("AOF rewrite - Write buffer error: ", err)
+	}
+
 	// Reroute future AOF records back to file
 	aof.w = NewWriter(aof.f)
 }
