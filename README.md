@@ -4,6 +4,8 @@ This project is a minimal clone of a Redis server, written in Go.
 
 Contains a `redis.conf` file to specify typical Redis settings.
 
+![Redis Clone sample picture](images/RedisClone.png)
+
 # To Use
 
 1. Make sure your normal Redis server (if present) is closed with `sudo systemctl stop redis-server.service`.
